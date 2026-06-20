@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Boids — Flocking Algorithm Playground</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f5; color: #1a1a1a; line-height: 1.6; }
+    .container { max-width: 1200px; margin: 0 auto; padding: 0 20px; }
+    h1 { font-size: 32px; font-weight: 700; margin-bottom: 12px; color: #000; }
+    h2 { font-size: 24px; font-weight: 600; margin-bottom: 20px; margin-top: 40px; color: #000; }
+    h3 { font-size: 18px; font-weight: 600; margin-bottom: 12px; color: #1a1a1a; }
+    p { margin-bottom: 16px; color: #333; }
+    a { color: #0066cc; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    code { background: #f0f0f0; padding: 2px 6px; border-radius: 3px; font-family: 'Monaco', monospace; font-size: 13px; color: #0066cc; }
+    pre { background: #f0f0f0; padding: 16px; border-radius: 6px; overflow-x: auto; margin-bottom: 16px; font-size: 12px; line-height: 1.5; }
+    pre code { background: none; padding: 0; color: #1a1a1a; }
+    ul, ol { margin-left: 20px; margin-bottom: 16px; }
+    li { margin-bottom: 8px; color: #333; }
+    .hero { padding: 60px 20px; text-align: center; }
+    .hero h1 { font-size: 40px; margin-bottom: 16px; }
+    .hero-subtitle { font-size: 18px; color: #666; margin-bottom: 30px; }
+    .divider { height: 1px; background: #ddd; margin: 40px 0; }
+    .info-box { background: rgba(0, 102, 204, 0.05); border-left: 2px solid #0066cc; padding: 12px 16px; margin: 16px 0; border-radius: 4px; font-size: 13px; line-height: 1.6; color: #333; }
+    .playground { display: grid; grid-template-columns: 280px 1fr; gap: 30px; margin-bottom: 60px; }
+    .controls { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 20px; display: flex; flex-direction: column; gap: 14px; height: fit-content; }
+    .control-group { display: flex; flex-direction: column; gap: 6px; }
+    .control-label { font-size: 12px; text-transform: uppercase; color: #999; font-weight: 600; letter-spacing: 0.5px; }
+    .species-label { font-size: 12px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+    input[type="range"] { width: 100%; padding: 0; height: 4px; cursor: pointer; accent-color: #0066cc; }
+    .range-value { font-size: 12px; color: #666; display: flex; justify-content: space-between; }
+    .range-label { font-weight: 500; }
+    .range-number { color: #0066cc; font-weight: 600; }
+    button { padding: 10px; background: transparent; border: 1px solid #0066cc; color: #0066cc; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 500; transition: all 0.2s; width: 100%; }
+    button:hover { background: rgba(0, 102, 204, 0.05); }
+    .canvas-container { background: #fff; border: 1px solid #ddd; border-radius: 8px; overflow: hidden; position: relative; }
+    canvas { display: block; width: 100%; height: 640px; }
+    .legend { position: absolute; bottom: 16px; left: 16px; display: flex; flex-direction: column; gap: 6px; }
+    .legend-item { display: flex; align-items: center; gap: 8px; font-size: 11px; color: rgba(255,255,255,0.85); text-shadow: 0 1px 3px rgba(0,0,0,0.4); font-weight: 500; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+    table th { background: #f0f0f0; padding: 12px; text-align: left; font-weight: 600; border: 1px solid #ddd; font-size: 13px; }
+    table td { padding: 12px; border: 1px solid #ddd; color: #333; font-size: 13px; }
+    footer { text-align: center; margin-top: 80px; padding-top: 30px; border-top: 1px solid #ddd; color: #999; font-size: 13px; }
+    footer a { color: #0066cc; font-weight: 500; }
+    @media (max-width: 900px) { .playground { grid-template-columns: 1fr; } .controls { order: -1; } }
+  </style>
+</head>
+<body>
+
+  <div class="hero">
+    <div class="container">
+      <h1>🦠 Boids</h1>
+      <p class="hero-subtitle">Distributed behavioral simulation of collective motion</p>
+    </div>
+  </div>
+
+  <div class="container">
+
+    <section>
+      <h2>What Are Boids?</h2>
+      <p>Boids is a distributed behavioral model developed by Craig Reynolds in 1986 to simulate the flocking motion of birds. The name derives from "bird-oid object." The model demonstrates that complex collective behavior can emerge from a small set of simple, local rules applied independently by each agent — with no global controller, no shared state, and no explicit communication between individuals.</p>
+      <p>Each agent perceives only a limited neighborhood defined by a radius and field of view. From this local information alone, it computes a steering force. The aggregate of hundreds of agents each doing this independently produces group dynamics indistinguishable from real animal behavior.</p>
+      <div class="info-box">
+        The core insight of boids — and of multi-agent systems generally — is that <strong>global order does not require global control</strong>. The flock has no leader. The pattern exists only in the interaction.
+      </div>
+    </section>
+
+    <div class="divider"></div>
+
+    <section>
+      <h2>The Three Steering Rules</h2>
+      <p>Each agent evaluates three forces every simulation step, weighted and summed into a single acceleration vector:</p>
+
+      <h3>Separation</h3>
+      <p>Steer away from neighbors that are too close. The repulsion force scales inversely with distance, preventing collisions and maintaining personal space within the group:</p>
+      <pre><code>for each neighbor within separationRadius:
+    steer += (myPos - neighbor.pos).normalized / distance</code></pre>
+
+      <h3>Alignment</h3>
+      <p>Steer toward the average heading of nearby neighbors. This produces the synchronized, directional coherence characteristic of real flocks and schools:</p>
+      <pre><code>avgVelocity = mean(neighbor.vel for neighbor in alignRadius)
+steer += (avgVelocity - myVel)</code></pre>
+
+      <h3>Cohesion</h3>
+      <p>Steer toward the local center of mass. This attractive force counteracts separation and keeps the group from dispersing indefinitely:</p>
+      <pre><code>center = mean(neighbor.pos for neighbor in cohesionRadius)
+steer += (center - myPos)</code></pre>
+
+      <p>The relative weights of these three forces determine the character of the flock: heavy separation produces loose, diffuse swarms; heavy cohesion produces tight, compact clusters; heavy alignment produces fast, elongated formations. Most realistic behavior emerges from balanced tuning.</p>
+    </section>
+
+    <div class="divider"></div>
+
+    <section>
+      <h2>Simulation</h2>
+      <p>A single-species colony of rod-shaped bacteria (bacilli) exhibiting classical flocking dynamics. The cursor acts as a repellent stimulus — move it over the colony to observe evasion and reformation behavior. Adjust count and speed to explore how population density and individual velocity affect emergent group structure.</p>
+
+      <div class="playground">
+        <div class="controls">
+
+          <div class="control-group">
+            <div class="range-value"><span class="range-label">Count</span><span class="range-number" id="countAVal">28</span></div>
+            <input type="range" id="countA" min="5" max="60" value="28" step="1" oninput="updateCount()">
+          </div>
+          <div class="control-group">
+            <div class="range-value"><span class="range-label">Speed</span><span class="range-number" id="speedAVal">0.6</span></div>
+            <input type="range" id="speedA" min="0.2" max="2.0" value="0.6" step="0.1" oninput="updateParam('speedA','speedAVal', v => cfg.A.maxSpeed=v)">
+          </div>
+
+          <div style="border-top:1px solid #f0f0f0; padding-top:12px;">
+            <div class="range-value" style="margin-bottom:6px"><span class="range-label">Cursor repel radius</span><span class="range-number" id="fleeRVal">110</span></div>
+            <input type="range" id="fleeR" min="30" max="250" value="110" step="10" oninput="updateParam('fleeR','fleeRVal', v => cfg.A.fleeRadius=v)">
+          </div>
+
+          <button onclick="resetSim()">↻ Reset</button>
+        </div>
+
+        <div class="canvas-container">
+          <canvas id="canvas"></canvas>
+          <div class="legend">
+            <div class="legend-item"><span class="dot" style="background:#7b8ccc;width:10px;height:10px;"></span> Bacteria — move cursor to repel</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+
+
+    <div class="divider"></div>
+
+    <section>
+      <h2>Emergence and Self-Organization</h2>
+      <p>Emergence refers to macroscopic patterns that arise from microscopic interactions without being explicitly encoded at any level. In boids, no agent knows the shape of the flock. No agent knows the flock exists. The global pattern — the V-formation, the split-and-merge around an obstacle, the rotating mill — is an epiphenomenon of local arithmetic.</p>
+      <p>This property makes boids a canonical example in complex systems theory, alongside reaction-diffusion equations, cellular automata, and ant colony optimization. The flock is not programmed. It precipitates.</p>
+    </section>
+
+    <div class="divider"></div>
+
+    <section>
+      <h2>Real-World Applications</h2>
+
+      <h3>Computer Graphics and Games</h3>
+      <p>Reynolds' original motivation was film VFX — specifically the bat and penguin crowds in Batman Returns (1992), which used a direct descendant of the boids model. Modern game engines use flocking for NPC crowds, ambient wildlife, particle systems, and enemy swarm AI. The crowd simulation in Assassin's Creed Unity rendered thousands of independently-behaving agents using boids-derived steering behaviors.</p>
+
+      <h3>Robotics and Drone Swarms</h3>
+      <p>Multi-agent coordination in robotics frequently draws on flocking principles. Military research programs (DARPA OFFSET, among others) have demonstrated swarms of 250+ autonomous drones maintaining formation, splitting around obstacles, and regrouping — using only local radio range for neighbor detection, no central command signal. The same approach is used in warehouse robots at Amazon fulfillment centers, where hundreds of Kiva units navigate shared space without centralized path planning.</p>
+
+      <h3>Traffic and Pedestrian Flow</h3>
+      <p>Microscopic traffic models like the Intelligent Driver Model treat each vehicle as a boid with modified rules: no lateral cohesion, longitudinal alignment only, strong forward separation. The emergent phenomenon of traffic jams — stop-and-go waves that propagate backward through a highway with no physical cause — is reproduced accurately by these agent-based models without any top-down traffic logic.</p>
+
+      <h3>Biology and Collective Animal Behavior</h3>
+      <p>Empirical studies of starling murmurations (Cavagna et al., 2010) confirmed that real birds use topological neighborhoods — each bird responds to its 6–7 nearest neighbors regardless of absolute distance — rather than metric radii. Boids with topological neighborhoods reproduce the observed scale-free correlations in real flocks. Fish schools, insect swarms, and bacterial colonies show analogous dynamics at very different scales.</p>
+
+      <h3>Distributed Systems and Networks</h3>
+      <p>Gossip protocols, epidemic routing in delay-tolerant networks, and certain consensus algorithms in distributed computing share structural similarity with flocking: local information exchange, no global coordinator, emergent system-wide convergence. The theoretical framework connecting boids to these systems is the study of distributed averaging and agreement in multi-agent systems.</p>
+    </section>
+
+    <footer>
+      <p>Boids Playground by <a href="https://github.com/KeeGooRoomiE">keegooroomie</a></p>
+      <p style="margin-top: 12px; font-size: 12px; color: #bbb;">Part of the <a href="https://github.com/KeeGooRoomiE" style="color:#bbb">Algorithms Lab</a> series</p>
+    </footer>
+
+  </div>
+
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    let t = 0; // global time for flagella animation
+
+    function resizeCanvas() {
+      const rect = canvas.getBoundingClientRect();
+      canvas.width = rect.width * window.devicePixelRatio;
+      canvas.height = rect.height * window.devicePixelRatio;
+      ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+    }
+    window.addEventListener('resize', () => { resizeCanvas(); });
+    resizeCanvas();
+
+    const W = () => canvas.getBoundingClientRect().width;
+    const H = () => canvas.getBoundingClientRect().height;
+
+    const mouse = { x: -9999, y: -9999, active: false };
+    canvas.addEventListener('mousemove', e => {
+      const r = canvas.getBoundingClientRect();
+      mouse.x = e.clientX - r.left; mouse.y = e.clientY - r.top; mouse.active = true;
+    });
+    canvas.addEventListener('mouseleave', () => { mouse.active = false; mouse.x = -9999; mouse.y = -9999; });
+
+    const cfg = {
+      A: { maxSpeed: 0.6, maxForce: 0.012, sepR: 50, aliR: 90, cohR: 110, sepW: 1.6, aliW: 1.0, cohW: 0.9, wandW: 0.35, fleeRadius: 110, fleeW: 2.8 },
+      B: { maxSpeed: 0.4, maxForce: 0.010, sepR: 60, aliR: 80, cohR: 100, sepW: 1.4, aliW: 0.8, cohW: 0.7, wandW: 0.3,  fleeRadius: 130, fleeW: 2.2 },
+      C: { maxSpeed: 0.5, maxForce: 0.011, sepR: 50, aliR: 85, cohR: 105, sepW: 1.5, aliW: 0.9, cohW: 0.8, wandW: 0.25, fleeRadius: 120, fleeW: 1.8, chaseR: 160, chaseW: 1.4 },
+    };
+
+    function rr(a, b) { return a + Math.random() * (b - a); }
+    function mag(v) { return Math.hypot(v.x, v.y); }
+    function norm(v) { const m = mag(v); return m > 0 ? { x: v.x/m, y: v.y/m } : { x:0, y:0 }; }
+    function limit(v, max) { const m = mag(v); if (m > max) { v.x=v.x/m*max; v.y=v.y/m*max; } return v; }
+    function sub(a, b) { return { x: a.x-b.x, y: a.y-b.y }; }
+    function add(a, b) { return { x: a.x+b.x, y: a.y+b.y }; }
+    function scale(v, s) { return { x: v.x*s, y: v.y*s }; }
+    function dist(a, b) { return Math.hypot(a.x-b.x, a.y-b.y); }
+
+    class Boid {
+      constructor(type) {
+        this.type = type;
+        this.pos = { x: rr(60, W()-60), y: rr(60, H()-60) };
+        const a = Math.random() * Math.PI * 2;
+        this.vel = { x: Math.cos(a)*0.4, y: Math.sin(a)*0.4 };
+        this.acc = { x:0, y:0 };
+        this.angle = a;
+        this.wanderAngle = Math.random() * Math.PI * 2;
+        // flagella phase offset — each bacterium waves at its own rhythm
+        this.flagPhase = Math.random() * Math.PI * 2;
+        this.flagCount = Math.floor(rr(2, 5));
+        this.flagLen = rr(0.7, 1.3); // relative to body
+
+        if (type === 'A') {
+          // Rod-shaped (bacillus)
+          this.bodyLen = rr(14, 22);
+          this.bodyW   = this.bodyLen * rr(0.28, 0.38);
+          // cool blue-purple, microscope stain
+          this.hue = rr(220, 260);
+          this.sat = rr(35, 55);
+          this.lig = rr(45, 60);
+          this.alpha = rr(0.55, 0.75);
+          this.nucleoidHue = this.hue + rr(-20, 20);
+        } else if (type === 'B') {
+          // Coccus (sphere)
+          this.radius = rr(10, 17);
+          this.hue = rr(28, 48);
+          this.sat = rr(38, 58);
+          this.lig = rr(50, 65);
+          this.alpha = rr(0.55, 0.72);
+          this.nucleoidHue = this.hue + rr(10, 30);
+          this.flagCount = Math.floor(rr(4, 8)); // cocci have more cilia
+          this.flagLen = rr(0.5, 0.9);
+        } else {
+          // Hunter rod — green tinted
+          this.bodyLen = rr(16, 26);
+          this.bodyW   = this.bodyLen * rr(0.30, 0.42);
+          this.hue = rr(140, 170);
+          this.sat = rr(30, 50);
+          this.lig = rr(42, 58);
+          this.alpha = rr(0.55, 0.72);
+          this.nucleoidHue = this.hue + rr(-15, 15);
+        }
+      }
+
+      steer(desired) {
+        const c = cfg[this.type];
+        if (mag(desired) === 0) return { x:0, y:0 };
+        const d = scale(norm(desired), c.maxSpeed);
+        return limit(sub(d, this.vel), c.maxForce);
+      }
+
+      separation(peers) {
+        const c = cfg[this.type];
+        let s = {x:0,y:0}, n = 0;
+        for (const b of peers) {
+          if (b === this) continue;
+          const d = dist(this.pos, b.pos);
+          if (d < c.sepR && d > 0) {
+            s = add(s, scale(norm(sub(this.pos, b.pos)), 1/d)); n++;
+          }
+        }
+        if (n > 0) { s.x/=n; s.y/=n; }
+        return this.steer(s);
+      }
+
+      alignment(peers) {
+        const c = cfg[this.type];
+        let avg = {x:0,y:0}, n = 0;
+        for (const b of peers) {
+          if (b === this) continue;
+          if (dist(this.pos, b.pos) < c.aliR) { avg = add(avg, b.vel); n++; }
+        }
+        if (n === 0) return {x:0,y:0};
+        avg.x/=n; avg.y/=n;
+        return this.steer(avg);
+      }
+
+      cohesion(peers) {
+        const c = cfg[this.type];
+        let center = {x:0,y:0}, n = 0;
+        for (const b of peers) {
+          if (b === this) continue;
+          if (dist(this.pos, b.pos) < c.cohR) { center = add(center, b.pos); n++; }
+        }
+        if (n === 0) return {x:0,y:0};
+        center.x = center.x/n - this.pos.x;
+        center.y = center.y/n - this.pos.y;
+        return this.steer(center);
+      }
+
+      fleeFrom(targets, radius) {
+        let s = {x:0,y:0}, n = 0;
+        for (const tgt of targets) {
+          const p = tgt.pos !== undefined ? tgt.pos : tgt;
+          const d = dist(this.pos, p);
+          if (d < radius && d > 0) {
+            s = add(s, scale(norm(sub(this.pos, p)), (1 - d/radius))); n++;
+          }
+        }
+        if (n === 0) return {x:0,y:0};
+        s.x/=n; s.y/=n;
+        return limit(s, cfg[this.type].maxForce * 3);
+      }
+
+      chaseNearest(targets, radius) {
+        let closest = null, cd = Infinity;
+        for (const b of targets) {
+          const d = dist(this.pos, b.pos);
+          if (d < radius && d < cd) { closest = b; cd = d; }
+        }
+        if (!closest) return {x:0,y:0};
+        return this.steer(sub(closest.pos, this.pos));
+      }
+
+      wander() {
+        this.wanderAngle += rr(-0.3, 0.3);
+        return limit({ x: Math.cos(this.wanderAngle), y: Math.sin(this.wanderAngle) }, cfg[this.type].maxForce);
+      }
+
+      update(boidsA, boidsB, boidsC) {
+        const c = cfg[this.type];
+        const peers = this.type==='A' ? boidsA : this.type==='B' ? boidsB : boidsC;
+
+        let acc = {x:0,y:0};
+        acc = add(acc, scale(this.separation(peers), c.sepW));
+        acc = add(acc, scale(this.alignment(peers),  c.aliW));
+        acc = add(acc, scale(this.cohesion(peers),   c.cohW));
+        acc = add(acc, scale(this.wander(),           c.wandW));
+
+        if (this.type === 'A') {
+          if (mouse.active) acc = add(acc, scale(this.fleeFrom([{pos:mouse}], c.fleeRadius), c.fleeW));
+          acc = add(acc, scale(this.fleeFrom(boidsB, 90), 1.2));
+        }
+        if (this.type === 'B') {
+          acc = add(acc, scale(this.fleeFrom(boidsA, c.fleeRadius), c.fleeW));
+        }
+        if (this.type === 'C') {
+          acc = add(acc, scale(this.chaseNearest(boidsA, c.chaseR), c.chaseW));
+          acc = add(acc, scale(this.fleeFrom(boidsB, c.fleeRadius), c.fleeW));
+        }
+
+        this.vel = add(this.vel, acc);
+        const fleeing = (this.type==='A' && mouse.active && dist(this.pos, mouse) < c.fleeRadius);
+        limit(this.vel, fleeing ? c.maxSpeed*2.2 : c.maxSpeed);
+
+        const margin=70, tf=0.022, w=W(), h=H();
+        if (this.pos.x < margin)     this.vel.x += tf*(1-this.pos.x/margin);
+        if (this.pos.x > w-margin)   this.vel.x -= tf*(1-(w-this.pos.x)/margin);
+        if (this.pos.y < margin)     this.vel.y += tf*(1-this.pos.y/margin);
+        if (this.pos.y > h-margin)   this.vel.y -= tf*(1-(h-this.pos.y)/margin);
+        limit(this.vel, fleeing ? c.maxSpeed*2.2 : c.maxSpeed);
+
+        this.pos = add(this.pos, this.vel);
+
+        const sp = mag(this.vel);
+        if (sp > 0.05) {
+          const target = Math.atan2(this.vel.y, this.vel.x);
+          let diff = target - this.angle;
+          while (diff >  Math.PI) diff -= Math.PI*2;
+          while (diff < -Math.PI) diff += Math.PI*2;
+          this.angle += diff * 0.08;
+        }
+      }
+
+      // Draw a sine-wave flagellum from (0,0) going left, rotated by baseAngle
+      drawFlagellum(length, amplitude, phase, color, alpha) {
+        const segs = 18;
+        const segLen = length / segs;
+        ctx.beginPath();
+        let px = 0, py = 0;
+        ctx.moveTo(px, py);
+        for (let i = 1; i <= segs; i++) {
+          const frac = i / segs;
+          // amplitude grows as we go further from body
+          const amp = amplitude * frac * 1.2;
+          const wave = Math.sin(frac * Math.PI * 2.5 + phase) * amp;
+          px -= segLen;
+          py = wave;
+          ctx.lineTo(px, py);
+        }
+        ctx.strokeStyle = color + alpha + ')';
+        ctx.lineWidth = 0.6;
+        ctx.stroke();
+      }
+
+      draw() {
+        ctx.save();
+        ctx.translate(this.pos.x, this.pos.y);
+        ctx.rotate(this.angle);
+
+        const speed = mag(this.vel);
+        // flagella wave speed proportional to movement speed
+        const fPhase = t * (0.06 + speed * 0.15) + this.flagPhase;
+
+        if (this.type === 'A' || this.type === 'C') {
+          const L = this.bodyLen, BW = this.bodyW;
+          const color = `hsla(${this.hue},${this.sat}%,${this.lig}%,`;
+          const nc    = `hsla(${this.nucleoidHue},${this.sat+10}%,${this.lig-15}%,`;
+
+          // --- flagella (behind the body, at the tail = -L*0.5) ---
+          for (let i = 0; i < this.flagCount; i++) {
+            const spread = (i / (this.flagCount - 1 || 1) - 0.5) * BW * 1.2;
+            ctx.save();
+            ctx.translate(-L * 0.45, spread);
+            const flagLen = L * this.flagLen * 1.8;
+            this.drawFlagellum(flagLen, BW * 0.6, fPhase + i * 0.8, color, this.alpha * 0.45);
+            ctx.restore();
+          }
+
+          // --- body: pill shape ---
+          const r = BW / 2;
+          const half = L / 2 - r;
+          ctx.beginPath();
+          ctx.moveTo(-half, -r);
+          ctx.lineTo( half, -r);
+          ctx.arc(half, 0, r, -Math.PI/2, Math.PI/2);
+          ctx.lineTo(-half, r);
+          ctx.arc(-half, 0, r, Math.PI/2, -Math.PI/2);
+          ctx.closePath();
+
+          // membrane gradient — lighter center, darker edge
+          const grad = ctx.createRadialGradient(L*0.05, -BW*0.1, 0, 0, 0, L*0.6);
+          grad.addColorStop(0,   color + (this.alpha * 0.55) + ')');
+          grad.addColorStop(0.55,color + (this.alpha * 0.72) + ')');
+          grad.addColorStop(1,   color + (this.alpha * 0.88) + ')');
+          ctx.fillStyle = grad;
+          ctx.fill();
+
+          // membrane edge — subtle stroke
+          ctx.strokeStyle = color + (this.alpha * 0.9) + ')';
+          ctx.lineWidth = 1.2;
+          ctx.stroke();
+
+          // --- nucleoid (irregular blob in center) ---
+          ctx.save();
+          ctx.beginPath();
+          const nw = L * 0.32, nh = BW * 0.38;
+          ctx.ellipse(L*0.04, 0, nw, nh, 0.3, 0, Math.PI*2);
+          ctx.fillStyle = nc + (this.alpha * 0.55) + ')';
+          ctx.fill();
+          ctx.restore();
+
+          // --- inner highlight (light refraction) ---
+          ctx.beginPath();
+          ctx.ellipse(-half*0.1, -BW*0.22, L*0.22, BW*0.12, -0.2, 0, Math.PI*2);
+          ctx.fillStyle = `rgba(255,255,255,${this.alpha * 0.18})`;
+          ctx.fill();
+
+        } else {
+          // COCCI — spherical
+          const R = this.radius;
+          const color = `hsla(${this.hue},${this.sat}%,${this.lig}%,`;
+          const nc    = `hsla(${this.nucleoidHue},${this.sat+12}%,${this.lig-12}%,`;
+
+          // --- cilia all around ---
+          for (let i = 0; i < this.flagCount; i++) {
+            const baseAngle = (i / this.flagCount) * Math.PI * 2;
+            ctx.save();
+            ctx.rotate(baseAngle);
+            ctx.translate(R * 0.85, 0);
+            const cilLen = R * this.flagLen * 1.4;
+            this.drawFlagellum(cilLen, R * 0.35, fPhase + i * 1.1, color, this.alpha * 0.4);
+            ctx.restore();
+          }
+
+          // --- body ---
+          ctx.beginPath();
+          ctx.arc(0, 0, R, 0, Math.PI*2);
+          const grad = ctx.createRadialGradient(R*0.2, -R*0.2, 0, 0, 0, R);
+          grad.addColorStop(0,   color + (this.alpha * 0.45) + ')');
+          grad.addColorStop(0.5, color + (this.alpha * 0.65) + ')');
+          grad.addColorStop(1,   color + (this.alpha * 0.88) + ')');
+          ctx.fillStyle = grad;
+          ctx.fill();
+          ctx.strokeStyle = color + (this.alpha * 0.9) + ')';
+          ctx.lineWidth = 1.1;
+          ctx.stroke();
+
+          // nucleoid
+          ctx.beginPath();
+          ctx.ellipse(R*0.05, R*0.04, R*0.38, R*0.28, 0.4, 0, Math.PI*2);
+          ctx.fillStyle = nc + (this.alpha * 0.5) + ')';
+          ctx.fill();
+
+          // highlight
+          ctx.beginPath();
+          ctx.ellipse(-R*0.28, -R*0.3, R*0.22, R*0.13, -0.5, 0, Math.PI*2);
+          ctx.fillStyle = `rgba(255,255,255,${this.alpha * 0.22})`;
+          ctx.fill();
+        }
+
+        ctx.restore();
+      }
+    }
+
+    let boidsA = [], boidsB = [], boidsC = [];
+
+    function resetSim() {
+      const nA = parseInt(document.getElementById('countA').value);
+      boidsA = Array.from({ length: nA }, () => new Boid('A'));
+      boidsB = [];
+      boidsC = [];
+    }
+
+    function updateCount() {
+      document.getElementById('countAVal').textContent = document.getElementById('countA').value;
+      resetSim();
+    }
+
+    function updateParam(sliderId, valId, setter) {
+      const v = parseFloat(document.getElementById(sliderId).value);
+      document.getElementById(valId).textContent = v;
+      setter(v);
+    }
+
+    // Microscope slide background
+    function drawBackground() {
+      const w = W(), h = H();
+      // warm off-white like a real glass slide
+      ctx.fillStyle = '#e8e4d8';
+      ctx.fillRect(0, 0, w, h);
+
+      // subtle vignette
+      const vign = ctx.createRadialGradient(w/2, h/2, h*0.2, w/2, h/2, h*0.85);
+      vign.addColorStop(0, 'rgba(0,0,0,0)');
+      vign.addColorStop(1, 'rgba(0,0,0,0.18)');
+      ctx.fillStyle = vign;
+      ctx.fillRect(0, 0, w, h);
+
+      // very faint stain texture blobs
+      ctx.globalAlpha = 0.025;
+      for (let i = 0; i < 6; i++) {
+        const bx = (i * 173) % w, by = (i * 251 + 80) % h;
+        const br = ctx.createRadialGradient(bx, by, 0, bx, by, 120 + i*30);
+        br.addColorStop(0, '#8888cc');
+        br.addColorStop(1, 'transparent');
+        ctx.fillStyle = br;
+        ctx.fillRect(0, 0, w, h);
+      }
+      ctx.globalAlpha = 1;
+    }
+
+    function loop() {
+      t++;
+      drawBackground();
+
+      for (const b of boidsA) b.update(boidsA, boidsB, boidsC);
+      for (const b of boidsB) b.update(boidsA, boidsB, boidsC);
+      for (const b of boidsC) b.update(boidsA, boidsB, boidsC);
+
+      for (const b of boidsB) b.draw();
+      for (const b of boidsA) b.draw();
+      for (const b of boidsC) b.draw();
+
+      requestAnimationFrame(loop);
+    }
+
+    resetSim();
+    loop();
+  </script>
+</body>
+</html>
